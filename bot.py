@@ -54,7 +54,7 @@ def main():
     msg += "<code>Symbol      LTP    1Y%    6M% 3m% 1m%</code>\n"
     for _, row in df.iterrows():
         msg += f"<code>{row['Symbol']:<11} {row['LTP']:>6} {row['1Y %']:>6}% 
-        {row['6M %']:>6}% {row['3m%']:>6}%{row['1m%']:>6}%</code>\n"
+        {row['6M %']:>6}% {row['3M %']:>6}% {row['1M %']:>6}%</code>\n"
 
     # Send via Telegram
     TOKEN = os.getenv('BOT_TOKEN')
