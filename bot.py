@@ -5,26 +5,33 @@ import requests
 from datetime import datetime, timedelta
 
 # --- CONFIGURATION ---
-# The list of ETFs you are tracking
 SYMBOLS = ["MASPTOP50.NS", "MAHKTECH.NS", "AUTOBEES.NS", "GROWWEV.NS", "PHARMABEES.NS", "ITBEES.NS", "BANKIETF.NS"]
 
 def get_returns(symbol):
     try:
-        # Fetching 2 years of data to ensure the 1Y back-calculation always has a reference point
+        # Fetching 2 years of data for historical reference
         data = yf.Ticker(symbol).history(period="2y")['Close']
         if data.empty: return None
         
         curr = data.iloc[-1]
+        prev_close = data.iloc[-2]
         
         def calc(days_back):
-            # Finds the closest available trading price for the requested timeframe
             target_date = data.index[-1] - timedelta(days=days_back)
             past = data.asof(target_date)
-            return round(((curr - past) / past) * 100, 2)
+            ret = ((curr - past) / past) * 100
+            # Return formatted string with color emoji
+            emoji = "🟢" if ret >= 0 else "🔴"
+            return f"{emoji}{round(ret, 2)}%"
         
+        # Current Day Return logic
+        day_ret = ((curr - prev_close) / prev_close) * 100
+        day_emoji = "🟢" if day_ret >= 0 else "🔴"
+
         return {
             "Symbol": symbol.replace(".NS",""),
             "LTP": round(curr, 2),
+            "Day": f"{day_emoji}{round(day_ret, 2)}%",
             "1W": calc(7),
             "1M": calc(30),
             "3M": calc(90),
@@ -42,38 +49,32 @@ def main():
         if res:
             results.append(res)
             
-    if not results:
-        print("No data found.")
-        return
+    if not results: return
 
-    # Sorting the list so the best performing ETF for the year is at the top
+    # Sorting by 1 Year returns
     df = pd.DataFrame(results).sort_values(by="1Y", ascending=False)
     
-    # --- IST TIME FIX ---
-    # GitHub servers use UTC; we add 5 hours and 30 minutes to match Indian Standard Time
+    # IST Time Fix (+5:30 hours from UTC server)
     ist_now = datetime.now() + timedelta(hours=5, minutes=30)
     
     msg = f"<b>📅 ETF Screener ({ist_now.strftime('%d-%m-%Y %H:%M')})</b>\n"
-    msg += "<i>Format: LTP | 1W | 1M | 3M | 6M | 1Y</i>\n\n"
+    msg += "<i>Format: LTP | Day | 1W | 1M | 3M | 6M | 1Y</i>\n\n"
     
     for _, row in df.iterrows():
-        msg += f"<b>{row['Symbol']}</b>: ₹{row['LTP']}\n"
-        msg += f"<code>↳ {row['1W']}% | {row['1M']}% | {row['3M']}% | {row['6M']}% | {row['1Y']}%</code>\n\n"
+        # Blue circle for LTP as requested
+        msg += f"<b>{row['Symbol']}</b>: 🔵 ₹{row['LTP']}\n"
+        msg += f"<code>↳ {row['Day']} | {row['1W']} | {row['1M']} | {row['3M']} | {row['6M']} | {row['1Y']}</code>\n\n"
 
-    # Telegram Credentials from GitHub Secrets
     TOKEN = os.getenv('BOT_TOKEN')
-    CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+    raw_ids = os.getenv('TELEGRAM_CHAT_ID') 
     
-    if TOKEN and CHAT_ID:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {
-            "chat_id": CHAT_ID,
-            "text": msg,
-            "parse_mode": "HTML"
-        }
-        requests.post(url, data=payload)
-    else:
-        print("Error: BOT_TOKEN or TELEGRAM_CHAT_ID not found in environment.")
+    if TOKEN and raw_ids:
+        # Split IDs by comma to support both private chat and channel
+        chat_ids = [id.strip() for id in raw_ids.split(',')]
+        for chat_id in chat_ids:
+            url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+            payload = {"chat_id": chat_id, "text": msg, "parse_mode": "HTML"}
+            requests.post(url, data=payload)
 
 if __name__ == "__main__":
     main()
