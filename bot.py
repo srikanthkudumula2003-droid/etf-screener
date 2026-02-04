@@ -5,18 +5,19 @@ import requests
 from datetime import datetime, timedelta
 
 # --- CONFIGURATION ---
+# The list of ETFs you are tracking
 SYMBOLS = ["MASPTOP50.NS", "MAHKTECH.NS", "AUTOBEES.NS", "GROWWEV.NS", "PHARMABEES.NS", "ITBEES.NS", "BANKIETF.NS"]
 
 def get_returns(symbol):
     try:
-        # Fetch 1y data to ensure we have historical prices
-        data = yf.Ticker(symbol).history(period="1y")['Close']
+        # Fetching 2 years of data to ensure the 1Y back-calculation always has a reference point
+        data = yf.Ticker(symbol).history(period="2y")['Close']
         if data.empty: return None
         
         curr = data.iloc[-1]
         
         def calc(days_back):
-            # Find the price closest to the target date
+            # Finds the closest available trading price for the requested timeframe
             target_date = data.index[-1] - timedelta(days=days_back)
             past = data.asof(target_date)
             return round(((curr - past) / past) * 100, 2)
@@ -35,7 +36,6 @@ def get_returns(symbol):
         return None
 
 def main():
-    # Filter out None results
     results = []
     for s in SYMBOLS:
         res = get_returns(s)
@@ -46,11 +46,14 @@ def main():
         print("No data found.")
         return
 
-    # Create DataFrame and Sort by 1 Year returns
+    # Sorting the list so the best performing ETF for the year is at the top
     df = pd.DataFrame(results).sort_values(by="1Y", ascending=False)
     
-    # Message formatting using HTML for a clean table look
-    msg = f"<b>📅 ETF Screener ({datetime.now().strftime('%d-%m-%Y %H:%M')})</b>\n"
+    # --- IST TIME FIX ---
+    # GitHub servers use UTC; we add 5 hours and 30 minutes to match Indian Standard Time
+    ist_now = datetime.now() + timedelta(hours=5, minutes=30)
+    
+    msg = f"<b>📅 ETF Screener ({ist_now.strftime('%d-%m-%Y %H:%M')})</b>\n"
     msg += "<i>Format: LTP | 1W | 1M | 3M | 6M | 1Y</i>\n\n"
     
     for _, row in df.iterrows():
@@ -70,7 +73,7 @@ def main():
         }
         requests.post(url, data=payload)
     else:
-        print("Error: BOT_TOKEN or TELEGRAM_CHAT_ID not set in Environment.")
+        print("Error: BOT_TOKEN or TELEGRAM_CHAT_ID not found in environment.")
 
 if __name__ == "__main__":
     main()
