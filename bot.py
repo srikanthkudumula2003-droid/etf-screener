@@ -1,83 +1,76 @@
 import yfinance as yf
 import pandas as pd
-import requests
 import os
-from datetime import datetime
+import requests
+from datetime import datetime, timedelta
 
-# 1. Securely get credentials from GitHub Secrets
-TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+# --- CONFIGURATION ---
+SYMBOLS = ["MASPTOP50.NS", "MAHKTECH.NS", "AUTOBEES.NS", "GROWWEV.NS", "PHARMABEES.NS", "ITBEES.NS", "BANKIETF.NS"]
 
-# 2. List of your ETFs
-ETFs = [
-    "MASPTOP50.NS", 
-    "MAHKTECH.NS", 
-    "AUTOBEES.NS", 
-    "GROWWEV.NS", 
-    "PHARMABEES.NS", 
-    "ITBEES.NS", 
-    "BANKIETF.NS"
-]
-
-def calculate_return(current, historical):
-    return round(((current - historical) / historical) * 100, 2)
-
-def get_etf_data(ticker):
+def get_returns(symbol):
     try:
-        # Fetching 1.5 years of data to ensure we have enough for the 1Y calculation
-        data = yf.download(ticker, period="2y", interval="1d")
-        if data.empty or len(data) < 260:
-            return None
+        # Fetch 1y data to ensure we have historical prices
+        data = yf.Ticker(symbol).history(period="1y")['Close']
+        if data.empty: return None
         
-        # Get Close prices column
-        close_prices = data['Close']
-        ltp = float(close_prices.iloc[-1])
+        curr = data.iloc[-1]
         
-        # Calculate returns based on common trading day offsets
-        # (Approx: 1W=5 days, 1M=21 days, 3M=63 days, 6M=126 days, 1Y=252 days)
-        returns = {
-            "ticker": ticker.replace(".NS", ""),
-            "ltp": round(ltp, 2),
-            "1W": calculate_return(ltp, float(close_prices.iloc[-5])),
-            "1M": calculate_return(ltp, float(close_prices.iloc[-21])),
-            "3M": calculate_return(ltp, float(close_prices.iloc[-63])),
-            "6M": calculate_return(ltp, float(close_prices.iloc[-126])),
-            "1Y": calculate_return(ltp, float(close_prices.iloc[-252]))
+        def calc(days_back):
+            # Find the price closest to the target date
+            target_date = data.index[-1] - timedelta(days=days_back)
+            past = data.asof(target_date)
+            return round(((curr - past) / past) * 100, 2)
+        
+        return {
+            "Symbol": symbol.replace(".NS",""),
+            "LTP": round(curr, 2),
+            "1W": calc(7),
+            "1M": calc(30),
+            "3M": calc(90),
+            "6M": calc(180),
+            "1Y": calc(365)
         }
-        return returns
     except Exception as e:
-        print(f"Error fetching {ticker}: {e}")
+        print(f"Error fetching {symbol}: {e}")
         return None
 
-def send_telegram_msg(message):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
-    requests.post(url, data=payload)
-
 def main():
-    message = "📊 *ETF Performance Report* 🚀\n"
-    message += "Format: LTP (1W | 1M | 3M | 6M | 1Y)\n\n"
-    
+    # Filter out None results
     results = []
-    for etf in ETFs:
-        data = get_etf_data(etf)
-        if data:
-            results.append(data)
-    
-    # Sort by 1Y performance (Highest to Lowest)
-    results.sort(key=lambda x: x['1Y'], reverse=True)
+    for s in SYMBOLS:
+        res = get_returns(s)
+        if res:
+            results.append(res)
+            
+    if not results:
+        print("No data found.")
+        return
 
-    for r in results:
-        line = (f"*{r['ticker']}*: ₹{r['ltp']}\n"
-                f"└ `{r['1W']}% | {r['1M']}% | {r['3M']}% | {r['6M']}% | {r['1Y']}%` \n\n")
-        message += line
+    # Create DataFrame and Sort by 1 Year returns
+    df = pd.DataFrame(results).sort_values(by="1Y", ascending=False)
     
-    message += "🕒 _Auto-generated via GitHub Actions_"
+    # Message formatting using HTML for a clean table look
+    msg = f"<b>📅 ETF Screener ({datetime.now().strftime('%d-%m-%Y %H:%M')})</b>\n"
+    msg += "<i>Format: LTP | 1W | 1M | 3M | 6M | 1Y</i>\n\n"
+    
+    for _, row in df.iterrows():
+        msg += f"<b>{row['Symbol']}</b>: ₹{row['LTP']}\n"
+        msg += f"<code>↳ {row['1W']}% | {row['1M']}% | {row['3M']}% | {row['6M']}% | {row['1Y']}%</code>\n\n"
+
+    # Telegram Credentials from GitHub Secrets
+    TOKEN = os.getenv('BOT_TOKEN')
+    CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
     
     if TOKEN and CHAT_ID:
-        send_telegram_msg(message)
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "parse_mode": "HTML"
+        }
+        requests.post(url, data=payload)
     else:
-        print("Error: Credentials missing.")
+        print("Error: BOT_TOKEN or TELEGRAM_CHAT_ID not set in Environment.")
 
 if __name__ == "__main__":
     main()
