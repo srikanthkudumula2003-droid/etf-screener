@@ -2,21 +2,28 @@ name: Daily ETF Screener
 
 on:
   schedule:
-    # Set to 8:45 AM IST (3:15 AM UTC) to hit ~9:15 AM IST
-    - cron: '15 3 * * 1-5'
-    # Set to 2:40 PM IST (9:10 AM UTC) to hit ~3:10 PM IST
-    - cron: '10 9 * * 1-5'
-  workflow_dispatch: # Allows you to run it manually anytime for testing
+    # --- MORNING UPDATE ---
+    # Trigger: 8:15 AM IST (2:45 AM UTC)
+    # Goal: Arrive by 9:15 AM Market Open
+    - cron: '45 2 * * 1-5'
+
+    # --- EVENING UPDATE ---
+    # Trigger: 2:20 PM IST (8:50 AM UTC)
+    # Goal: Arrive by 3:10 PM Market Close
+    - cron: '50 8 * * 1-5'
+
+  workflow_dispatch:
+    # Allows you to run it manually for testing
 
 jobs:
-  screen:
+  run-screener:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository code
-        uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -25,9 +32,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install yfinance pandas requests
 
-      - name: Run Screener
+      - name: Run ETF Screener
         env:
-          # Ensure these secret names match your GitHub Settings exactly
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py
