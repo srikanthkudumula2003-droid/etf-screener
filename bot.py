@@ -5,8 +5,9 @@ import os
 from datetime import datetime
 import pytz
 
-# 1. SETUP
-SYMBOLS = ['MASPTOP50.NS', 'ITBEES.NS', 'BANKIETF.NS', 'PHARMABEES.NS', 'MAHKTECH.NS', 'MON100.NS', 'GROWWEV.NS']
+# 1. SETUP - UPDATED LIST
+# Removed MON100, Added AUTOBEES
+SYMBOLS = ['MASPTOP50.NS', 'ITBEES.NS', 'BANKIETF.NS', 'PHARMABEES.NS', 'MAHKTECH.NS', 'AUTOBEES.NS', 'GROWWEV.NS']
 IST = pytz.timezone('Asia/Kolkata')
 
 def get_data(symbol):
@@ -28,7 +29,7 @@ def get_data(symbol):
 
         return {
             'Symbol': symbol.replace('.NS', ''),
-            'Full_Ticker': symbol, # Kept for the URL
+            'Full_Ticker': symbol,
             'LTP': f"{ltp:.2f}",
             'Day': f"{'🟢' if day_chg >= 0 else '🔴'}{day_chg:+.1f}%",
             '52W_Dist': f"{dist_52w:.1f}%",
@@ -54,14 +55,9 @@ def main():
 
     for i, row in enumerate(results):
         prefix = "🏆 " if i == 0 else "🔹 "
-        
-        # LINK LOGIC: Turn the Symbol into a Yahoo Finance URL
         yf_link = f"https://finance.yahoo.com/quote/{row['Full_Ticker']}"
-        
-        # Symbol is now a clickable <a> link
         msg += f"{prefix}<a href='{yf_link}'><b>{row['Symbol']}</b></a> ➔ LTP: 🔵 <b>₹{row['LTP']}</b>\n"
         msg += f"<code>Range: {row['52W_Dist']} from 52W High</code>\n"
-        
         msg += f"<code>DAY      | 1W       | 1M</code>\n"
         msg += f"<code>{row['Day'].ljust(8)} | {row['1W'].ljust(8)} | {row['1M'].ljust(8)}</code>\n"
         msg += f"<code>3M       | 6M       | 1Y</code>\n"
@@ -73,7 +69,6 @@ def main():
     token = os.getenv('BOT_TOKEN')
     chat_ids = os.getenv('TELEGRAM_CHAT_ID', '').split(',')
     for cid in chat_ids:
-        # Disable link previews to keep the chat clean
         payload = {
             "chat_id": cid.strip(), 
             "text": msg, 
